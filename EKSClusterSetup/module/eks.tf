@@ -41,7 +41,7 @@ resource "aws_eks_addon" "eks-addons" {
 
   depends_on = [
     aws_eks_node_group.ondemand-node,
-    aws_eks_node_group.spot-node
+    #aws_eks_node_group.spot-node
   ]
 }
 
@@ -77,7 +77,7 @@ resource "aws_eks_node_group" "ondemand-node" {
   depends_on = [aws_eks_cluster.eks]
 }
 
-resource "aws_eks_node_group" "spot-node" {
+/* resource "aws_eks_node_group" "spot-node" {
   cluster_name    = aws_eks_cluster.eks[0].name
   node_group_name = "${var.cluster-name}-spot-nodes"
 
@@ -108,4 +108,4 @@ resource "aws_eks_node_group" "spot-node" {
   disk_size = 50
 
   depends_on = [aws_eks_cluster.eks]
-}
+} */
