@@ -1,0 +1,494 @@
+Userdata for Jumpbox server:
+----------------------------
+#!/bin/bash
+
+# Installing AWS CLI
+#!/bin/bash
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+sudo apt install unzip -y
+unzip awscliv2.zip
+sudo ./aws/install
+
+# Installing Docker 
+#!/bin/bash
+sudo apt update
+sudo apt install docker.io -y
+sudo usermod -aG docker jenkins
+sudo usermod -aG docker ubuntu
+sudo systemctl restart docker
+sudo chmod 777 /var/run/docker.sock
+
+# Installing Kubectl
+#!/bin/bash
+sudo apt update
+sudo apt install curl -y
+sudo curl -LO "https://dl.k8s.io/release/v1.28.4/bin/linux/amd64/kubectl"
+sudo chmod +x kubectl
+sudo mv kubectl /usr/local/bin/
+kubectl version --client
+
+# Intalling Helm
+#! /bin/bash
+sudo snap install helm --classic
+
+
+# Installing eksctl
+#! /bin/bash
+curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+sudo mv /tmp/eksctl /usr/local/bin
+eksctl version
+
+
+################################
+
+
+Jumbox server setup
+--------------------
+ubuntu@ip-10-16-3-189:~$ aws configure
+ubuntu@ip-10-16-3-189:~$ aws eks update-kubeconfig --region us-east-1 --name dev-medium-eks-cluster
+ubuntu@ip-10-16-3-189:~$ kubectl get nodes
+NAME                            STATUS   ROLES    AGE   VERSION
+ip-10-16-155-169.ec2.internal   Ready    <none>   21m   v1.29.6-eks-1552ad0
+ip-10-16-172-171.ec2.internal   Ready    <none>   21m   v1.29.6-eks-1552ad0
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.5.4/docs/install/iam_policy.json
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  8386  100  8386    0     0  42725      0 --:--:-- --:--:-- --:--:-- 42785
+ubuntu@ip-10-16-3-189:~$ ls
+iam_policy.json  snap
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ aws iam create-policy --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file://iam_policy.json
+{
+    "Policy": {
+        "PolicyName": "AWSLoadBalancerControllerIAMPolicy",
+        "PolicyId": "ANPAYS2NVFC3OS4HSR533",
+        "Arn": "arn:aws:iam::590183999670:policy/AWSLoadBalancerControllerIAMPolicy",
+        "Path": "/",
+        "DefaultVersionId": "v1",
+        "AttachmentCount": 0,
+        "PermissionsBoundaryUsageCount": 0,
+        "IsAttachable": true,
+        "CreateDate": "2024-08-13T06:17:23+00:00",
+        "UpdateDate": "2024-08-13T06:17:23+00:00"
+    }
+}
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ eksctl create iamserviceaccount --cluster=dev-medium-eks-cluster --namespace=kube-system --name=aws-load-balancer-controller --role-name AmazonEKSLoadBalancerControllerRole --attach-policy-arn=arn:aws:iam::975050208254:policy/AWSLoadBalancerControllerIAMPolicy --approve --region=us-east-1
+2024-08-13 06:17:51 [ℹ]  1 iamserviceaccount (kube-system/aws-load-balancer-controller) was included (based on the include/exclude rules)
+2024-08-13 06:17:51 [!]  serviceaccounts that exist in Kubernetes will be excluded, use --override-existing-serviceaccounts to override
+2024-08-13 06:17:51 [ℹ]  1 task: { 
+    2 sequential sub-tasks: { 
+        create IAM role for serviceaccount "kube-system/aws-load-balancer-controller",
+        create serviceaccount "kube-system/aws-load-balancer-controller",
+    } }2024-08-13 06:17:51 [ℹ]  building iamserviceaccount stack "eksctl-dev-medium-eks-cluster-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2024-08-13 06:17:51 [ℹ]  deploying stack "eksctl-dev-medium-eks-cluster-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2024-08-13 06:17:52 [ℹ]  waiting for CloudFormation stack "eksctl-dev-medium-eks-cluster-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2024-08-13 06:18:22 [ℹ]  waiting for CloudFormation stack "eksctl-dev-medium-eks-cluster-addon-iamserviceaccount-kube-system-aws-load-balancer-controller"
+2024-08-13 06:18:22 [ℹ]  created serviceaccount "kube-system/aws-load-balancer-controller"
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ helm repo add eks https://aws.github.io/eks-charts
+"eks" has been added to your repositories
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ helm repo update eks
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "eks" chart repository
+Update Complete. ⎈Happy Helming!⎈
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system --set clusterName=dev-medium-eks-cluster --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller
+NAME: aws-load-balancer-controller
+LAST DEPLOYED: Tue Aug 13 06:19:24 2024
+NAMESPACE: kube-system
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+AWS Load Balancer controller installed!
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ kubectl get deploy aws-load-balancer-controller -n kube-system
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+aws-load-balancer-controller   2/2     2            2           5m57s
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ kubectl create namespace argocd
+namespace/argocd created
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.4.7/manifests/install.yaml
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ kubectl get all -n argocd
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ kubectl edit svc argocd-server -n argocd
+service/argocd-server edited
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ kubectl get svc -n argocd
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ kubectl get secrets -n argocd
+NAME                          TYPE     DATA   AGE
+argocd-initial-admin-secret   Opaque   1      7m8s
+argocd-notifications-secret   Opaque   0      7m18s
+argocd-secret                 Opaque   5      7m18s
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ kubectl get secret argocd-initial-admin-secret -n argocd -o yaml
+ubuntu@ip-10-16-3-189:~$ echo dXZrbm9HclF4SzFTcUFpVQ== | base64 --decode
+723yxKs98GlOj7JEubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+ubuntu@ip-10-16-3-189:~$ 
+
+uvknoGrQxK1SqAiU
+
+ubuntu@ip-10-16-3-189:~$ aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 975050208254.dkr.ecr.us-east-1.amazonaws.com
+ubuntu@ip-10-16-3-189:~$ kubectl create secret generic ecr-registry-secret --from-file=.dockerconfigjson=$HOME/.docker/config.json --type=kubernetes.io/dockerconfigjson --namespace three-tier
+ubuntu@ip-10-16-3-189:~$ kubectl get secrets -n three-tier
+++++++
+
+
+jenkins server:
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 975050208254.dkr.ecr.us-east-1.amazonaws.com
+
+
+########################
+########################
+########################
+
+
+
+Jenkins server setup:
+----------------------
+jenkins:  d233d840f5dc410baaf38612325434b7
+http://3.87.175.181:8080/
+jenkins/jenkins
+
+ECR:
+frontend
+975050208254.dkr.ecr.us-east-1.amazonaws.com/frontend
+backend
+975050208254.dkr.ecr.us-east-1.amazonaws.com/backend
+
+
+argocd:
+admin/723yxKs98GlOj7JE
+
+
+sonar:
+http://3.87.175.181:9000/
+admin/admin
+sonar
+
+sonar-token: squ_517ba304aa7f33132b784f1d09d7842d8968cc1f
+webhook:
+jenkins
+http://3.87.175.181:8080/sonarqube-webhooks
+
+Frontend:
+sonar-scanner \
+  -Dsonar.projectKey=frontend \
+  -Dsonar.sources=. \
+  -Dsonar.host.url=http://3.87.175.181:9000 \
+  -Dsonar.login=squ_517ba304aa7f33132b784f1d09d7842d8968cc1f
+  
+
+Backend:
+sonar-scanner \
+  -Dsonar.projectKey=backend \
+  -Dsonar.sources=. \
+  -Dsonar.host.url=http://3.87.175.181:9000 \
+  -Dsonar.login=squ_517ba304aa7f33132b784f1d09d7842d8968cc1f
+ 
+sonar-token
+squ_517ba304aa7f33132b784f1d09d7842d8968cc1f
+
+ACCOUNT_ID
+975050208254
+
+
+GITHUB-APP
+devopsworkarea
+
+
+ID Name Kind Description
+AWS Credentials	aws-creds	AKIA6GBMFOP7NUBDUSFS	AWS Credentials		Update
+Secret text	ACCOUNT_ID	ACCOUNT_ID	Secret text		Update
+Username with password	GITHUB-APP	devopsworkarea/******	Username with password		Update
+Secret text	github	github	Secret text		Update
+Secret text	ECR_REPO1	ECR_REPO1	Secret text		Update
+Secret text	ECR_REPO2	ECR_REPO2	Secret text		Update
+Secret text	sonar-token	sonar-token	Secret text
+
+
+AWS Credentials
+Pipeline: AWS Steps
+7 more plugins in jenkins
+Docker
+nodejs
+owasp
+sonar
+
+now configure the tools
+
+
+jenkins server:
+aws configure
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 975050208254.dkr.ecr.us-east-1.amazonaws.com
+
+
+
+
+jenkins pipeline for frontend and backend:
+-------
+
+frontend:
+---------
+pipeline {
+    agent any 
+    tools {
+        nodejs 'nodejs'
+    }
+    environment  {
+        SCANNER_HOME=tool 'sonar-scanner'
+        AWS_ACCOUNT_ID = credentials('ACCOUNT_ID')
+        AWS_ECR_REPO_NAME = credentials('ECR_REPO1')
+        AWS_DEFAULT_REGION = 'us-east-1'
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/"
+    }
+    stages {
+        stage('Cleaning Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Checkout from Git') {
+            steps {
+                git credentialsId: 'GITHUB', url: 'https://github.com/devopsworkarea/MERNStack-Project.git'
+            }
+        }
+        stage('Sonarqube Analysis') {
+            steps {
+                dir('Application-Code/frontend') {
+                    withSonarQubeEnv('sonar-server') {
+                        sh ''' $SCANNER_HOME/bin/sonar-scanner \
+                        -Dsonar.projectName=frontend \
+                        -Dsonar.projectKey=frontend '''
+                    }
+                }
+            }
+        }
+        // stage('Quality Check') {
+        //     steps {
+        //         script {
+        //             waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token' 
+        //         }
+        //     }
+        // }
+        // stage('OWASP Dependency-Check Scan') {
+        //     steps {
+        //         dir('Application-Code/frontend') {
+        //             dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+        //             dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+        //         }
+        //     }
+        // }
+        stage('Trivy File Scan') {
+            steps {
+                dir('Application-Code/frontend') {
+                    sh 'trivy fs . > trivyfs.txt'
+                }
+            }
+        }
+        stage("Docker Image Build") {
+            steps {
+                script {
+                    dir('Application-Code/frontend') {
+                            sh 'docker system prune -f'
+                            sh 'docker container prune -f'
+                            sh 'docker build -t ${AWS_ECR_REPO_NAME} .'
+                    }
+                }
+            }
+        }
+        stage("ECR Image Pushing") {
+            steps {
+                script {
+                        sh 'aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI}'
+                        sh 'docker tag ${AWS_ECR_REPO_NAME} ${REPOSITORY_URI}${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}'
+                        sh 'docker push ${REPOSITORY_URI}${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}'
+                }
+            }
+        }
+        stage("TRIVY Image Scan") {
+            steps {
+                sh 'trivy image ${REPOSITORY_URI}${AWS_ECR_REPO_NAME}:${BUILD_NUMBER} > trivyimage.txt' 
+            }
+        }
+        stage('Checkout Code') {
+            steps {
+                git credentialsId: 'GITHUB', url: 'https://github.com/devopsworkarea/MERNStack-Project.git'
+            }
+        }
+        stage('Update Deployment file') {
+            environment {
+                GIT_REPO_NAME = "MERNStack-Project"
+                GIT_USER_NAME = "devopsworkarea"
+            }
+            steps {
+                dir('Kubernetes-Manifests-file/Frontend') {
+                    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                        sh '''
+                            git config user.email "devopsworkarea@gmail.com"
+                            git config user.name "devopsworkarea"
+                            BUILD_NUMBER=${BUILD_NUMBER}
+                            echo $BUILD_NUMBER
+                            imageTag=$(grep -oP '(?<=frontend:)[^ ]+' deployment.yaml)
+                            echo $imageTag
+                            sed -i "s/${AWS_ECR_REPO_NAME}:${imageTag}/${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}/" deployment.yaml
+                            git add deployment.yaml
+                            git commit -m "Update deployment Image to version \${BUILD_NUMBER}"
+                            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:master
+                        '''
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+
+backend:
+--------
+pipeline {
+    agent any 
+    tools {
+        nodejs 'nodejs'
+    }
+    environment  {
+        SCANNER_HOME=tool 'sonar-scanner'
+        AWS_ACCOUNT_ID = credentials('ACCOUNT_ID')
+        AWS_ECR_REPO_NAME = credentials('ECR_REPO2')
+        AWS_DEFAULT_REGION = 'us-east-1'
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/"
+    }
+    stages {
+        stage('Cleaning Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Checkout from Git') {
+            steps {
+                git credentialsId: 'GITHUB', url: 'https://github.com/devopsworkarea/MERNStack-Project.git'
+            }
+        }
+        stage('Sonarqube Analysis') {
+            steps {
+                dir('Application-Code/backend') {
+                    withSonarQubeEnv('sonar-server') {
+                        sh ''' $SCANNER_HOME/bin/sonar-scanner \
+                        -Dsonar.projectName=backend \
+                        -Dsonar.projectKey=backend '''
+                    }
+                }
+            }
+        }
+        // stage('Quality Check') {
+        //     steps {
+        //         script {
+        //             waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token' 
+        //         }
+        //     }
+        // }
+        // stage('OWASP Dependency-Check Scan') {
+        //     steps {
+        //         dir('Application-Code/backend') {
+        //             dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+        //             dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+        //         }
+        //     }
+        // }
+        stage('Trivy File Scan') {
+            steps {
+                dir('Application-Code/backend') {
+                    sh 'trivy fs . > trivyfs.txt'
+                }
+            }
+        }
+        stage("Docker Image Build") {
+            steps {
+                script {
+                    dir('Application-Code/backend') {
+                            sh 'docker system prune -f'
+                            sh 'docker container prune -f'
+                            sh 'docker build -t ${AWS_ECR_REPO_NAME} .'
+                    }
+                }
+            }
+        }
+        stage("ECR Image Pushing") {
+            steps {
+                script {
+                        sh 'aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI}'
+                        sh 'docker tag ${AWS_ECR_REPO_NAME} ${REPOSITORY_URI}${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}'
+                        sh 'docker push ${REPOSITORY_URI}${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}'
+                }
+            }
+        }
+        stage("TRIVY Image Scan") {
+            steps {
+                sh 'trivy image ${REPOSITORY_URI}${AWS_ECR_REPO_NAME}:${BUILD_NUMBER} > trivyimage.txt' 
+            }
+        }
+        stage('Checkout Code') {
+            steps {
+                git credentialsId: 'GITHUB', url: 'https://github.com/devopsworkarea/MERNStack-Project.git'
+            }
+        }
+        stage('Update Deployment file') {
+            environment {
+                GIT_REPO_NAME = "MERNStack-Project"
+                GIT_USER_NAME = "devopsworkarea"
+            }
+            steps {
+                dir('Kubernetes-Manifests-file/Backend') {
+                    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                        sh '''
+                            git config user.email "devopsworkarea@gmail.com"
+                            git config user.name "devopsworkarea"
+                            BUILD_NUMBER=${BUILD_NUMBER}
+                            echo $BUILD_NUMBER
+                            imageTag=$(grep -oP '(?<=backend:)[^ ]+' deployment.yaml)
+                            echo $imageTag
+                            sed -i "s/${AWS_ECR_REPO_NAME}:${imageTag}/${AWS_ECR_REPO_NAME}:${BUILD_NUMBER}/" deployment.yaml
+                            git add deployment.yaml
+                            git commit -m "Update deployment Image to version \${BUILD_NUMBER}"
+                            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:master
+                        '''
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
